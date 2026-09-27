@@ -8,9 +8,26 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
 
 
 @pytest.mark.parametrize(
-    "provider", ["cuda_naive", "cuda_tiled", "wmma_basic", "cublas", "cublaslt"]
+    "provider",
+    [
+        "cuda_naive",
+        "cuda_tiled",
+        "wmma_basic",
+        "wmma_tiled",
+        "cublas",
+        "cublaslt",
+    ],
 )
-@pytest.mark.parametrize("shape", [(1, 1, 1), (15, 17, 31), (17, 33, 65), (127, 129, 63)])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1, 1, 1),
+        (15, 17, 31),
+        (17, 33, 65),
+        (127, 129, 63),
+        (129, 257, 33),
+    ],
+)
 def test_non_tile_aligned_shapes(provider, shape):
     torch.manual_seed(7)
     m, n, k = shape

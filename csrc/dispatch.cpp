@@ -61,6 +61,8 @@ void hgemm_out(const torch::Tensor& a, const torch::Tensor& b,
         launch_cuda_tiled(a, b, out, stream);
     } else if (resolved == "wmma_basic") {
         launch_wmma_basic(a, b, out, stream);
+    } else if (resolved == "wmma_tiled") {
+        launch_wmma_tiled(a, b, out, stream);
     } else if (resolved == "cublas") {
         launch_cublas_reference(a, b, out, stream);
     } else if (resolved == "cublaslt") {
@@ -84,7 +86,7 @@ bool has_cutlass() {
 std::map<std::string, int64_t> backend_info(const std::string& implementation) {
     const auto resolved = resolve_implementation(implementation);
     if (resolved == "cuda_naive" || resolved == "cuda_tiled" ||
-        resolved == "wmma_basic") {
+        resolved == "wmma_basic" || resolved == "wmma_tiled") {
         return {{"algorithm_id", -1}, {"workspace_bytes", 0}};
     }
 

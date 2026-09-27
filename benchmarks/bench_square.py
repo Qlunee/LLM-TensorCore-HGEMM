@@ -66,6 +66,7 @@ def provider_version(provider: str) -> str:
         "cuda_naive": "v1.0",
         "cuda_tiled": "v1.1",
         "wmma_basic": "v2",
+        "wmma_tiled": "v3",
     }
     return versions[provider]
 

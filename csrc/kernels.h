@@ -20,3 +20,9 @@ void launch_wmma_basic(
     const torch::Tensor& b,
     torch::Tensor& out,
     cudaStream_t stream);
+
+void launch_wmma_tiled(
+    const torch::Tensor& a,
+    const torch::Tensor& b,
+    torch::Tensor& out,
+    cudaStream_t stream);

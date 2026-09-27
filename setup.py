@@ -33,6 +33,7 @@ extension = CUDAExtension(
         "csrc/v1_cuda_naive.cu",
         "csrc/v1_cuda_tiled.cu",
         "csrc/v2_wmma_basic.cu",
+        "csrc/v3_wmma_tiled.cu",
         "csrc/references/cublas_ref.cu",
         "csrc/references/cublaslt_ref.cu",
         "csrc/references/cutlass_ref.cu",

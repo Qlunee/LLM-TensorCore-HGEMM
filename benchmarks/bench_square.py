@@ -70,6 +70,8 @@ def provider_version(provider: str) -> str:
         "mma_ptx": "v4",
         "mma_padded": "v5-padding",
         "mma_vectorized": "v5",
+        "mma_double_buffer": "v6-sync",
+        "mma_async": "v6",
     }
     return versions[provider]
 

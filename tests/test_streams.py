@@ -16,6 +16,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
         "wmma_tiled",
         "mma_ptx",
         "mma_vectorized",
+        "mma_async",
         "cublas",
         "cublaslt",
     ],

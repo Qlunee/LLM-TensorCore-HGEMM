@@ -16,6 +16,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA requ
         "wmma_tiled",
         "mma_ptx",
         "mma_vectorized",
+        "mma_async",
         "cublas",
         "cublaslt",
     ],
@@ -53,7 +54,7 @@ def test_cutlass_aligned_shape():
 @pytest.mark.parametrize(
     "provider",
     ["cuda_naive", "cuda_tiled", "wmma_basic", "wmma_tiled", "mma_ptx",
-     "mma_vectorized"],
+     "mma_vectorized", "mma_async"],
 )
 @pytest.mark.parametrize("pattern", ["zeros", "uniform", "sparse"])
 def test_custom_kernel_input_patterns(provider, pattern):

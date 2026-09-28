@@ -14,6 +14,7 @@ nvcc_flags = [
     "-O3",
     "-std=c++17",
     "-lineinfo",
+    "-Xptxas=-v",
     "-gencode=arch=compute_86,code=sm_86",
 ]
 
@@ -36,6 +37,7 @@ extension = CUDAExtension(
         "csrc/v3_wmma_tiled.cu",
         "csrc/v4_mma_ptx.cu",
         "csrc/v5_mma_vectorized.cu",
+        "csrc/v6_mma_async.cu",
         "csrc/references/cublas_ref.cu",
         "csrc/references/cublaslt_ref.cu",
         "csrc/references/cutlass_ref.cu",

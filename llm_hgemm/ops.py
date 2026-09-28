@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import torch
 
+from .dispatch import last_selected, record_selected, selected_implementation
+
 try:
     from . import _C
 except ImportError as exc:  # pragma: no cover - exercised before installation only
@@ -21,7 +23,11 @@ def hgemm(
     epilogue: str = "none",
 ) -> torch.Tensor:
     """Compute row-major FP16 C=A@B with FP32 accumulation."""
-    return _C.hgemm(a, b, implementation, epilogue)
+    resolved = selected_implementation(a, b, implementation)
+    output = _C.hgemm(a, b, resolved, epilogue)
+    if implementation == "shape_auto":
+        record_selected(resolved)
+    return output
 
 
 def _hgemm_out(
@@ -33,13 +39,17 @@ def _hgemm_out(
     epilogue: str = "none",
 ) -> torch.Tensor:
     """Benchmark seam using a preallocated output tensor."""
-    _C.hgemm_out(a, b, out, implementation, epilogue)
+    resolved = selected_implementation(a, b, implementation)
+    _C.hgemm_out(a, b, out, resolved, epilogue)
+    if implementation == "shape_auto":
+        record_selected(resolved)
     return out
 
 
 def available_providers() -> tuple[str, ...]:
     providers = [
         "torch",
+        "shape_auto",
         "cuda_naive",
         "cuda_tiled",
         "wmma_basic",
@@ -62,4 +72,6 @@ def available_providers() -> tuple[str, ...]:
 def backend_info(implementation: str) -> dict[str, int]:
     if implementation == "torch":
         return {"algorithm_id": -1, "workspace_bytes": 0}
+    if implementation == "shape_auto":
+        implementation = last_selected()
     return dict(_C.backend_info(implementation))

@@ -10,6 +10,9 @@ from pathlib import Path
 
 import torch
 
+from llm_hgemm.dispatch import configure_dispatch, last_selected
+from llm_hgemm.provenance import code_fingerprint, file_sha256
+
 from llm_hgemm.ops import _hgemm_out, available_providers, backend_info
 from llm_hgemm.reference import correctness_passed, error_metrics, torch_reference
 
@@ -39,6 +42,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--samples", type=int, default=50)
     parser.add_argument("--launches-per-sample", type=int, default=10)
+    parser.add_argument("--dispatch", type=Path)
+    parser.add_argument("--dispatch-strategy",
+                        choices=["best_available", "best_custom"],
+                        default="best_available")
     parser.add_argument("--seed", type=int, default=2026)
     return parser.parse_args()
 
@@ -60,6 +67,7 @@ def provider_version(provider: str) -> str:
     """Return the milestone represented by each benchmark provider."""
     versions = {
         "torch": "reference",
+        "shape_auto": "v7",
         "cublas": "v0-reference",
         "cublaslt": "v0-reference",
         "cutlass": "v0-reference",
@@ -153,6 +161,10 @@ def main() -> None:
     args = parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
+    if args.dispatch:
+        configure_dispatch(args.dispatch, strategy=args.dispatch_strategy)
+    elif "shape_auto" in args.providers:
+        raise ValueError("shape_auto requires --dispatch")
     config = BenchmarkConfig(args.warmup, args.samples, args.launches_per_sample)
     if min(config.warmup, config.samples, config.launches_per_sample) <= 0:
         raise ValueError("warmup, samples, and launches-per-sample must be positive")
@@ -165,6 +177,13 @@ def main() -> None:
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     environment = collect_environment()
+    environment.update({
+        "code_fingerprint": code_fingerprint(),
+        "seed": args.seed,
+        "shapes_sha256": file_sha256(args.shapes),
+        "dispatch_strategy": args.dispatch_strategy if args.dispatch else None,
+        "dispatch_sha256": file_sha256(args.dispatch) if args.dispatch else None,
+    })
     rows: list[dict[str, object]] = []
 
     for shape in load_shapes(args.shapes):
@@ -182,6 +201,9 @@ def main() -> None:
             row = make_row(
                 environment, provider, shape, config,
                 summarize_us(samples_us), metrics, info,
+            )
+            row["selected_implementation"] = (
+                last_selected() if provider == "shape_auto" else provider
             )
             rows.append(row)
             print(
@@ -203,6 +225,10 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
     save_manifest(args.output.with_suffix(".manifest.json"), environment, config)
+    if args.dispatch and file_sha256(args.dispatch) != environment["dispatch_sha256"]:
+        raise RuntimeError("dispatch table changed during benchmark")
+    if code_fingerprint() != environment["code_fingerprint"]:
+        raise RuntimeError("source/extension changed during benchmark")
 
     failed = [row for row in rows if row["status"] != "pass"]
     if failed:

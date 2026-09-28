@@ -1,0 +1,127 @@
+{
+  "schema_version": 2,
+  "gpu": "NVIDIA GeForce RTX 3090",
+  "sm": "8.6",
+  "cuda": "12.8",
+  "torch": "2.11.0+cu128",
+  "code_fingerprint": "92ffd39ad3e14524166fbda14bbb0a4c5e644c7335dc491f5c2c0809fff5bc9f",
+  "min_gain": 0.05,
+  "max_variation": 0.1,
+  "entries": [
+    {
+      "M": 1,
+      "N": 2560,
+      "K": 4096,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 84.99199897050858,
+      "cublaslt_median_us": 46.08000069856644,
+      "baseline_variation": 0.017708306216917637
+    },
+    {
+      "M": 1,
+      "N": 2560,
+      "K": 9728,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 188.4160041809082,
+      "cublaslt_median_us": 78.84799689054489,
+      "baseline_variation": 0.02597403579147634
+    },
+    {
+      "M": 1,
+      "N": 4096,
+      "K": 2560,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 63.48799914121628,
+      "cublaslt_median_us": 41.98399931192398,
+      "baseline_variation": 0.04878050511828134
+    },
+    {
+      "M": 1,
+      "N": 9728,
+      "K": 2560,
+      "best_custom": "mma_async_compact",
+      "best_available": "mma_async_compact",
+      "custom_covered": true,
+      "custom_median_us": 74.75200295448303,
+      "cublaslt_median_us": 84.99199897050858,
+      "baseline_variation": 0.0028238167166969117
+    },
+    {
+      "M": 4,
+      "N": 4096,
+      "K": 2560,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 57.19999969005585,
+      "cublaslt_median_us": 39.93599861860275,
+      "baseline_variation": 0.02684296747889366
+    },
+    {
+      "M": 128,
+      "N": 2560,
+      "K": 4096,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 82.67199993133545,
+      "cublaslt_median_us": 67.58400052785873,
+      "baseline_variation": 0.0
+    },
+    {
+      "M": 128,
+      "N": 2560,
+      "K": 9728,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 179.9200028181076,
+      "cublaslt_median_us": 130.8640018105507,
+      "baseline_variation": 0.006969091625731763
+    },
+    {
+      "M": 128,
+      "N": 4096,
+      "K": 2560,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 77.82399654388428,
+      "cublaslt_median_us": 67.58400052785873,
+      "baseline_variation": 0.003787907601071594
+    },
+    {
+      "M": 128,
+      "N": 9728,
+      "K": 2560,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 126.97599828243256,
+      "cublaslt_median_us": 105.83999752998352,
+      "baseline_variation": 0.03839759294993722
+    },
+    {
+      "M": 512,
+      "N": 4096,
+      "K": 2560,
+      "best_custom": "mma_async_compact",
+      "best_available": "cublaslt",
+      "custom_covered": true,
+      "custom_median_us": 196.03200256824493,
+      "cublaslt_median_us": 199.68000054359436,
+      "baseline_variation": 0.07179482127934766
+    }
+  ],
+  "sources": [
+    "/home/lq/project/LLM-TensorCore-HGEMM/results/raw/v7_llm_run1.csv",
+    "/home/lq/project/LLM-TensorCore-HGEMM/results/raw/v7_llm_run2.csv",
+    "/home/lq/project/LLM-TensorCore-HGEMM/results/raw/v7_llm_run3.csv"
+  ]
+}

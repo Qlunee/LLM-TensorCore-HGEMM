@@ -16,7 +16,7 @@ import torch
 
 CSV_FIELDS = [
     "timestamp", "git_sha", "gpu", "sm", "driver", "cuda", "torch",
-    "provider", "version", "M", "N", "K", "layout", "input_dtype",
+    "provider", "selected_implementation", "version", "M", "N", "K", "layout", "input_dtype",
     "accum_dtype", "output_dtype", "algo_id", "workspace_bytes", "warmup",
     "samples", "launches_per_sample", "median_us", "p95_us", "min_us",
     "tflops", "ratio_to_cublaslt", "max_abs_error", "mean_abs_error",

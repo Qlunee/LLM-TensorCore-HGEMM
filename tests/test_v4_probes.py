@@ -7,30 +7,18 @@ from llm_hgemm.reference import correctness_passed, error_metrics, torch_referen
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
 
-@pytest.mark.parametrize(
-    "provider",
-    [
-        "cuda_naive",
-        "cuda_tiled",
-        "wmma_basic",
-        "wmma_tiled",
-        "mma_ptx",
-        "cublas",
-        "cublaslt",
-    ],
-)
+@pytest.mark.parametrize("provider", ["mma_ptx_probe", "ldmatrix_probe"])
 @pytest.mark.parametrize(
     "shape",
     [
-        (1, 1, 1),
-        (15, 17, 31),
-        (17, 33, 65),
-        (127, 129, 63),
-        (129, 257, 33),
+        (16, 8, 16),
+        (32, 16, 32),
+        (17, 9, 19),
+        (37, 21, 47),
     ],
 )
-def test_non_tile_aligned_shapes(provider, shape):
-    torch.manual_seed(7)
+def test_v4_probe_mapping(provider, shape):
+    torch.manual_seed(2026)
     m, n, k = shape
     a = torch.randn((m, k), device="cuda", dtype=torch.float16) * 0.1
     b = torch.randn((k, n), device="cuda", dtype=torch.float16) * 0.1

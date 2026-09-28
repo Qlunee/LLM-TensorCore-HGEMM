@@ -44,6 +44,7 @@ def available_providers() -> tuple[str, ...]:
         "cuda_tiled",
         "wmma_basic",
         "wmma_tiled",
+        "mma_ptx",
         "cublas",
         "cublaslt",
     ]

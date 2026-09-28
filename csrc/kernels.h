@@ -26,3 +26,21 @@ void launch_wmma_tiled(
     const torch::Tensor& b,
     torch::Tensor& out,
     cudaStream_t stream);
+
+void launch_mma_ptx_probe(
+    const torch::Tensor& a,
+    const torch::Tensor& b,
+    torch::Tensor& out,
+    cudaStream_t stream);
+
+void launch_ldmatrix_probe(
+    const torch::Tensor& a,
+    const torch::Tensor& b,
+    torch::Tensor& out,
+    cudaStream_t stream);
+
+void launch_mma_ptx(
+    const torch::Tensor& a,
+    const torch::Tensor& b,
+    torch::Tensor& out,
+    cudaStream_t stream);

@@ -68,6 +68,8 @@ def provider_version(provider: str) -> str:
         "wmma_basic": "v2",
         "wmma_tiled": "v3",
         "mma_ptx": "v4",
+        "mma_padded": "v5-padding",
+        "mma_vectorized": "v5",
     }
     return versions[provider]
 

@@ -44,3 +44,15 @@ void launch_mma_ptx(
     const torch::Tensor& b,
     torch::Tensor& out,
     cudaStream_t stream);
+
+void launch_mma_padded(
+    const torch::Tensor& a,
+    const torch::Tensor& b,
+    torch::Tensor& out,
+    cudaStream_t stream);
+
+void launch_mma_vectorized(
+    const torch::Tensor& a,
+    const torch::Tensor& b,
+    torch::Tensor& out,
+    cudaStream_t stream);

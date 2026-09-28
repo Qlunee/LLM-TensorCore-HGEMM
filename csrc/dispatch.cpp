@@ -69,6 +69,10 @@ void hgemm_out(const torch::Tensor& a, const torch::Tensor& b,
         launch_ldmatrix_probe(a, b, out, stream);
     } else if (resolved == "mma_ptx") {
         launch_mma_ptx(a, b, out, stream);
+    } else if (resolved == "mma_padded") {
+        launch_mma_padded(a, b, out, stream);
+    } else if (resolved == "mma_vectorized") {
+        launch_mma_vectorized(a, b, out, stream);
     } else if (resolved == "cublas") {
         launch_cublas_reference(a, b, out, stream);
     } else if (resolved == "cublaslt") {
@@ -94,7 +98,8 @@ std::map<std::string, int64_t> backend_info(const std::string& implementation) {
     if (resolved == "cuda_naive" || resolved == "cuda_tiled" ||
         resolved == "wmma_basic" || resolved == "wmma_tiled" ||
         resolved == "mma_ptx_probe" || resolved == "ldmatrix_probe" ||
-        resolved == "mma_ptx") {
+        resolved == "mma_ptx" || resolved == "mma_padded" ||
+        resolved == "mma_vectorized") {
         return {{"algorithm_id", -1}, {"workspace_bytes", 0}};
     }
 

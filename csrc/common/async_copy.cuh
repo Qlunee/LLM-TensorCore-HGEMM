@@ -38,12 +38,19 @@ __device__ __forceinline__ void commit() {
         : "memory");
 }
 
-__device__ __forceinline__ void wait_all() {
+template <int Pending>
+__device__ __forceinline__ void wait_group() {
+    static_assert(Pending >= 0 && Pending <= 7);
     asm volatile(
-        "cp.async.wait_group 0;\n"
+        "cp.async.wait_group %0;\n"
         :
-        :
+        : "n"(Pending)
         : "memory");
+}
+
+// Compatibility alias: waits for committed groups, does not commit copies.
+__device__ __forceinline__ void wait_all() {
+    wait_group<0>();
 }
 
 }  // namespace llm_hgemm::async_copy

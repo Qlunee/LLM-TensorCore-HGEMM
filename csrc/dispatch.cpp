@@ -77,6 +77,10 @@ void hgemm_out(const torch::Tensor& a, const torch::Tensor& b,
         launch_mma_double_buffer(a, b, out, stream);
     } else if (resolved == "mma_async") {
         launch_mma_async(a, b, out, stream);
+    } else if (resolved == "mma_double_buffer_compact") {
+        launch_mma_double_buffer_compact(a, b, out, stream);
+    } else if (resolved == "mma_async_compact") {
+        launch_mma_async_compact(a, b, out, stream);
     } else if (resolved == "cublas") {
         launch_cublas_reference(a, b, out, stream);
     } else if (resolved == "cublaslt") {
@@ -104,7 +108,8 @@ std::map<std::string, int64_t> backend_info(const std::string& implementation) {
         resolved == "mma_ptx_probe" || resolved == "ldmatrix_probe" ||
         resolved == "mma_ptx" || resolved == "mma_padded" ||
         resolved == "mma_vectorized" || resolved == "mma_double_buffer" ||
-        resolved == "mma_async") {
+        resolved == "mma_async" || resolved == "mma_double_buffer_compact" ||
+        resolved == "mma_async_compact") {
         return {{"algorithm_id", -1}, {"workspace_bytes", 0}};
     }
 

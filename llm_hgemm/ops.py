@@ -49,6 +49,8 @@ def available_providers() -> tuple[str, ...]:
         "mma_vectorized",
         "mma_double_buffer",
         "mma_async",
+        "mma_double_buffer_compact",
+        "mma_async_compact",
         "cublas",
         "cublaslt",
     ]

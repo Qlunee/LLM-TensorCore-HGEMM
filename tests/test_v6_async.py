@@ -7,7 +7,10 @@ from llm_hgemm.reference import correctness_passed, error_metrics, torch_referen
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 
-PROVIDERS = ["mma_double_buffer", "mma_async"]
+PROVIDERS = [
+    "mma_double_buffer", "mma_async",
+    "mma_double_buffer_compact", "mma_async_compact",
+]
 
 
 def assert_correct(output, reference):
@@ -19,6 +22,7 @@ def assert_correct(output, reference):
 @pytest.mark.parametrize(
     "shape",
     [
+        (64, 64, 32),  # Compact full tile; original boundary tile
         (128, 128, 32),  # Prologue and final computation only
         (128, 128, 64),  # First stage switch
         (128, 128, 96),  # First reuse of Stage 0
@@ -79,3 +83,17 @@ def test_v6_non_default_stream(provider, shape):
 def test_v6_provider_metadata(provider):
     assert provider in available_providers()
     assert backend_info(provider) == {"algorithm_id": -1, "workspace_bytes": 0}
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_v6_stage_markers(provider):
+    """Distinct K-tile markers expose missing, repeated or stale stages."""
+    m, n, k = 129, 136, 160
+    a = torch.full((m, k), 0.125, device="cuda", dtype=torch.float16)
+    b = torch.empty((k, n), device="cuda", dtype=torch.float16)
+    for tile, marker in enumerate([1, 2, 4, 8, 16]):
+        b[tile * 32:(tile + 1) * 32].fill_(marker / 16.0)
+    output = hgemm(a, b, implementation=provider)
+    # 32 * (1/8) * (1+2+4+8+16)/16 = 7.75, exactly representable.
+    expected = torch.full((m, n), 7.75, device="cuda", dtype=torch.float16)
+    torch.testing.assert_close(output, expected, rtol=0, atol=0)

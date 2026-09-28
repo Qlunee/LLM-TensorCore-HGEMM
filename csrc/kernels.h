@@ -68,3 +68,11 @@ void launch_mma_async(
     const torch::Tensor& b,
     torch::Tensor& out,
     cudaStream_t stream);
+
+void launch_mma_double_buffer_compact(
+    const torch::Tensor& a, const torch::Tensor& b,
+    torch::Tensor& out, cudaStream_t stream);
+
+void launch_mma_async_compact(
+    const torch::Tensor& a, const torch::Tensor& b,
+    torch::Tensor& out, cudaStream_t stream);

@@ -15,11 +15,7 @@
 namespace {
 
 using llm_hgemm::layout::kBlockK;
-using llm_hgemm::layout::kBlockM;
-using llm_hgemm::layout::kBlockN;
 using llm_hgemm::layout::kThreadsPerBlock;
-using llm_hgemm::layout::kWarpM;
-using llm_hgemm::layout::kWarpN;
 using llm_hgemm::layout::ldmatrix_x2_trans;
 using llm_hgemm::layout::ldmatrix_x4;
 using llm_hgemm::layout::mma_m16n8k16;
@@ -30,19 +26,9 @@ using llm_hgemm::vector::is_aligned_16;
 constexpr int kStages = 2;
 constexpr int kVectorElements = 8;
 
-constexpr int kAStride = kBlockK + 8;
-constexpr int kBStride = kBlockN + 8;
-
-static_assert(kAStride * sizeof(__half) % 16 == 0);
-static_assert(kBStride * sizeof(__half) % 16 == 0);
-
+// Tile dimensions are template parameters; the reference remains 128x128.
 static_assert(kBlockK % kVectorElements == 0);
-static_assert(kBlockN % kVectorElements == 0);
 static_assert(kStages == 2, "Stage XOR mapping requires exactly two buffers");
-static_assert(
-    kStages * (kBlockM * kAStride + kBlockK * kBStride) * sizeof(__half)
-        <= 48 * 1024,
-    "Static shared memory must stay within the default per-block limit");
 
 // Copy one complete or zero-filled 16-byte vector.
 // Invalid vectors use the valid allocation base as a dummy source.
@@ -70,9 +56,9 @@ __device__ __forceinline__ void copy_vector(
     }
 }
 
-// Every CTA thread copies four A vectors and four B vectors.
+// Each thread copies four A/B vectors for 128x128, two for 64x64.
 // Only logical tile elements are written; padding is never consumed.
-template <bool Async, bool BoundsChecked>
+template <bool Async, bool BoundsChecked, int kBlockM, int kBlockN>
 __device__ __forceinline__ void load_stage(
     __half* shared_a,
     __half* shared_b,
@@ -86,6 +72,8 @@ __device__ __forceinline__ void load_stage(
     int k,
     int thread) {
 
+    constexpr int kAStride = kBlockK + 8;
+    constexpr int kBStride = kBlockN + 8;
     // 把 A 的一个 kBlockM × kBlockK tile，切成很多个 16B 向量，然后让整个 CTA 的线程协同搬到 Shared Memory。
     // 表示 A tile 每一行能切成多少个 16B 向量，kVectorElements = 8，表示每个向量有 8 个 half 元素。
     constexpr int a_vectors_per_row = kBlockK / kVectorElements;
@@ -173,7 +161,7 @@ __device__ __forceinline__ void load_stage(
     }
 
     // 把当前线程前面已经发出的若干个 cp.async 归成一个 group，并正式提交这一组异步拷贝。
-    // 每线程搬 4 个 A vector + 4 个 B vector = 8 个 cp.async，commit_group 会把这 8 个 cp.async 归成一个 group。
+    // 每线程将本 tile 的 A/B cp.async 提交为一个 group（数量由 CTA tile 决定）。
     if constexpr (Async) {
         llm_hgemm::async_copy::commit();
     }
@@ -185,7 +173,10 @@ __device__ __forceinline__ void load_stage(
 template <bool Async>
 __device__ __forceinline__ void stage_ready() {
     if constexpr (Async) {
-        llm_hgemm::async_copy::wait_all();
+        // Only one committed group can be pending here. wait_group<1>()
+        // would NOT guarantee this tile is ready. Waiting follows current MMA,
+        // so next-tile copies have already overlapped with computation.
+        llm_hgemm::async_copy::wait_group<0>();
     }
 
     __syncthreads();
@@ -232,7 +223,7 @@ __device__ __forceinline__ void store_fragment(
     }
 }
 
-template <bool Async, bool BoundsChecked>
+template <bool Async, bool BoundsChecked, int kBlockM, int kBlockN>
 __global__ void mma_async_kernel(
     const __half* __restrict__ a,
     const __half* __restrict__ b,
@@ -240,6 +231,18 @@ __global__ void mma_async_kernel(
     int m,
     int n,
     int k) {
+    constexpr int kAStride = kBlockK + 8;
+    constexpr int kBStride = kBlockN + 8;
+    constexpr int kWarpM = kBlockM / 2;
+    constexpr int kWarpN = kBlockN / 2;
+    constexpr int kMmaRows = kWarpM / 16;
+    constexpr int kMmaColumns = kWarpN / 8;
+    static_assert(kBlockM % 32 == 0 && kBlockN % 16 == 0);
+    static_assert(kBlockN % kVectorElements == 0);
+    static_assert(kAStride * sizeof(__half) % 16 == 0);
+    static_assert(kBStride * sizeof(__half) % 16 == 0);
+    static_assert(kStages * (kBlockM * kAStride + kBlockK * kBStride)
+                      * sizeof(__half) <= 48 * 1024);
     // 准备双缓冲 Shared Memory，kStages=2 时，就是两块 ping-pong buffer
     __shared__ __align__(16)
         __half shared_a[kStages][kBlockM][kAStride];
@@ -260,13 +263,13 @@ __global__ void mma_async_kernel(
     const int warp_row = (warp >> 1) * kWarpM;
     const int warp_column = (warp & 1) * kWarpN;
     
-    // 一个 warp 在 M 方向负责 4 个 m16，N 方向负责 8 个 n8，每个线程对每个 m16n8 fragment 持有 4 个 FP32 结果
-    float accumulator[4][8][4];
+    // 每 warp 有 kMmaRows × kMmaColumns 个 m16n8 子块，每 lane 每子块累加 4 个 FP32。
+    float accumulator[kMmaRows][kMmaColumns][4];
 
 #pragma unroll
-    for (int mma_m = 0; mma_m < 4; ++mma_m) {
+    for (int mma_m = 0; mma_m < kMmaRows; ++mma_m) {
 #pragma unroll
-        for (int mma_n = 0; mma_n < 8; ++mma_n) {
+        for (int mma_n = 0; mma_n < kMmaColumns; ++mma_n) {
 #pragma unroll
             for (int element = 0; element < 4; ++element) {
                 accumulator[mma_m][mma_n][element] = 0.0f;
@@ -275,7 +278,7 @@ __global__ void mma_async_kernel(
     }
 
     // Prologue: Tile 0 -> Stage 0，先把第一个 K tile 从 Global Memory 搬到 Stage 0，等它完全 ready 后才能开始算
-    load_stage<Async, BoundsChecked>(
+    load_stage<Async, BoundsChecked, kBlockM, kBlockN>(
         &shared_a[0][0][0],
         &shared_b[0][0][0],
         a,
@@ -308,7 +311,7 @@ __global__ void mma_async_kernel(
         if (has_next) {
             // Async copies can run while the current stage is computed.
             // The synchronous ablation uses the same buffer sequence.
-            load_stage<Async, BoundsChecked>(
+            load_stage<Async, BoundsChecked, kBlockM, kBlockN>(
                 //把 K 从 32 开始的下一块 tile，搬到 Stage 1
                 //这里面发的是 cp.async，所以代码发完搬运请求以后，不会停在这里等数据搬完
                 &shared_a[write_stage][0][0],
@@ -329,10 +332,10 @@ __global__ void mma_async_kernel(
              inner_k < kBlockK;
              inner_k += 16) {
 
-            uint32_t a_fragment[4][4];
+            uint32_t a_fragment[kMmaRows][4];
 
 #pragma unroll
-            for (int mma_m = 0; mma_m < 4; ++mma_m) {
+            for (int mma_m = 0; mma_m < kMmaRows; ++mma_m) {
                 const int address_row =
                     warp_row + mma_m * 16 + (lane & 15);
 
@@ -347,7 +350,7 @@ __global__ void mma_async_kernel(
             }
 
 #pragma unroll
-            for (int mma_n = 0; mma_n < 8; ++mma_n) {
+            for (int mma_n = 0; mma_n < kMmaColumns; ++mma_n) {
                 const int address_row =
                     inner_k + (lane & 15);
 
@@ -363,7 +366,7 @@ __global__ void mma_async_kernel(
                              [address_column]);
 
 #pragma unroll
-                for (int mma_m = 0; mma_m < 4; ++mma_m) {
+                for (int mma_m = 0; mma_m < kMmaRows; ++mma_m) {
                     mma_m16n8k16(
                         accumulator[mma_m][mma_n],
                         a_fragment[mma_m],
@@ -382,11 +385,11 @@ __global__ void mma_async_kernel(
         }
     }
 
-// 将每个 warp 累加得到的 4×8 个 MMA 子块写回 Global Memory
+// 将每个 warp 累加得到的 MMA 子块写回 Global Memory
 #pragma unroll
-    for (int mma_m = 0; mma_m < 4; ++mma_m) {  // 遍历 M 方向的 4 个 16-row MMA tile
+    for (int mma_m = 0; mma_m < kMmaRows; ++mma_m) {  // 遍历 M 方向的 16-row MMA tile
 #pragma unroll
-        for (int mma_n = 0; mma_n < 8; ++mma_n) { // 遍历 N 方向的 8 个 8-column MMA tile
+        for (int mma_n = 0; mma_n < kMmaColumns; ++mma_n) { // 遍历 N 方向的 8-column MMA tile
             store_fragment<BoundsChecked>(
                 accumulator[mma_m][mma_n], // 当前 m16n8 tile：每线程持有 4 个 FP32 累加结果
                 c, // 输出矩阵 C
@@ -402,7 +405,7 @@ __global__ void mma_async_kernel(
 
 //V6 的 host 端启动函数：负责把 PyTorch Tensor 转成 CUDA 指针、检查是否满足 16B 向量化条件、
 // 计算 grid/block，然后根据矩阵尺寸选择“无边界检查”或“带边界检查”的 mma_async_kernel
-template <bool Async>
+template <bool Async, int kBlockM = 128, int kBlockN = 128>
 void launch_pipeline(
     const torch::Tensor& a,
     const torch::Tensor& b,
@@ -460,7 +463,7 @@ void launch_pipeline(
         k % kBlockK == 0;
 
     if (full_tiles) {
-        mma_async_kernel<Async, false>
+        mma_async_kernel<Async, false, kBlockM, kBlockN>
             <<<grid, block, 0, stream>>>(
                 a_pointer,
                 b_pointer,
@@ -469,7 +472,7 @@ void launch_pipeline(
                 n,
                 k);
     } else {
-        mma_async_kernel<Async, true>
+        mma_async_kernel<Async, true, kBlockM, kBlockN>
             <<<grid, block, 0, stream>>>(
                 a_pointer,
                 b_pointer,
@@ -500,4 +503,18 @@ void launch_mma_async(
     cudaStream_t stream) {
 
     launch_pipeline<true>(a, b, out, stream);
+}
+
+ // Compact ablation: same padded layout, BlockK, copy/cache policy and waits.
+ // Smaller tiles reduce resources but also data reuse; benchmark before dispatch.
+void launch_mma_double_buffer_compact(
+    const torch::Tensor& a, const torch::Tensor& b,
+    torch::Tensor& out, cudaStream_t stream) {
+    launch_pipeline<false, 64, 64>(a, b, out, stream);
+}
+
+void launch_mma_async_compact(
+    const torch::Tensor& a, const torch::Tensor& b,
+    torch::Tensor& out, cudaStream_t stream) {
+    launch_pipeline<true, 64, 64>(a, b, out, stream);
 }

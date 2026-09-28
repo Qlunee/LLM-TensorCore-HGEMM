@@ -72,6 +72,8 @@ def provider_version(provider: str) -> str:
         "mma_vectorized": "v5",
         "mma_double_buffer": "v6-sync",
         "mma_async": "v6",
+        "mma_double_buffer_compact": "v6-compact-sync",
+        "mma_async_compact": "v6-compact",
     }
     return versions[provider]
 

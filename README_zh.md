@@ -54,7 +54,78 @@ Epilogue:        none
 
 项目使用 FP32 matmul、关闭 TF32，再舍入为 FP16，作为算子正确性参考。
 
-## 3. 版本演进
+## 3. 理论与优化思路
+
+项目的主线不是简单替换 API，而是逐步回答三个问题：如何提高数据复用，如何组织 Tensor Core 的计算，以及如何让数据搬运与计算重叠。以下将这些原理与实际实现对应起来。
+
+### 3.1 GEMM 的计算量与访存瓶颈
+
+每个输出元素是长度为 K 的点积。按一次乘加计为 2 次浮点运算，性能计算使用：
+
+```text
+C[m, n] = sum(A[m, k] * B[k, n], k = 0 ... K-1)
+FLOPs = 2 * M * N * K
+TFLOPS = FLOPs / (latency_seconds * 10^12)
+```
+
+本项目采用 FP16 输入、FP32 累加、FP16 输出。FP32 累加降低累加过程的舍入误差，但不代表不同 Kernel 或库算法会产生逐位一致的结果。
+
+假设 A/B 各读取一次、C 写入一次，忽略缓存状态、重复加载和工作空间，可以得到理想数据流量与算术强度：
+
+```text
+ideal_bytes = 2 * (M*K + K*N + M*N)
+arithmetic_intensity = (2*M*N*K) / ideal_bytes   # FLOPs/byte
+```
+
+这只是理想流量模型，不是实测 DRAM 流量。对于边长为 L 的方阵，算术强度为 L/3；M=1 且 N/K 较大时则接近 1 FLOP/byte。大方阵有更大的计算复用空间，小 M Decode 更容易受到权重读取和并行度限制。极小矩阵还可能主要受启动开销影响；CUDA Events 包围的执行区间也可能包含主机提交不及时造成的 GPU 空闲间隙，不能一概当作纯计算耗时。[GEMM 性能背景](https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html)
+
+### 3.2 从共享内存分块到 Tensor Core 分层计算
+
+V1 Tiled 将 A/B 子块加载到共享内存，再让线程复用数据计算输出，减少重复的全局内存读取。V3/V4 进一步将输出区域分为 Block Tile、Warp Tile 和指令 Tile：
+
+```text
+Block Tile: 128 x 128，沿 K 以 32 为步长推进
+  └─ 4 个 Warp，每个计算 64 x 64 输出
+       └─ WMMA 16 x 16 x 16 或 MMA PTX 16 x 8 x 16
+```
+
+二维 Tile 描述的是输出矩阵区域，不要求线程块也使用二维索引。A/B Tile 在共享内存中跨 Warp 复用，输出部分和保存在寄存器中；增大 Tile 能提高复用，却也增加寄存器和共享内存需求，可能降低驻留 Block 数。因此 Tile 越大不一定越快。V6 同时保留 128×128 与紧凑 64×64 Block Tile，后者的 Warp Tile 为 32×32，用来比较资源占用与并行度的取舍。
+
+### 3.3 WMMA 与 MMA PTX：相同计算单元，不同控制粒度
+
+WMMA 和 MMA PTX 都使用 Tensor Core。WMMA 用 fragment 抽象组织矩阵装载和计算；V4 则显式组织 `mma.sync.aligned.m16n8k16` 所需的寄存器片段，并用 `ldmatrix.sync` 从共享内存协作装载。
+
+这里的关键是 Lane-to-Fragment 映射，而不是“写 PTX 就一定更快”。对于一个 m16n8 输出片段，每个 Lane 持有 4 个 FP32 累加值；代码需要正确对应 Lane、寄存器与输出行列。B 的 `ldmatrix ... .trans` 用于形成 MMA 要求的片段布局，不表示将全局内存中的整个 B 矩阵转置。性能差异还取决于布局、地址计算、装载组织及编译结果，不能仅凭 WMMA/PTX 的名称解释。[PTX 指令规范](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html)
+
+### 3.4 向量化拷贝与共享内存 Padding
+
+V5 使用 128-bit 拷贝，一次搬运 8 个 FP16 元素，减少搬运指令数量；完整 Tile 与满足对齐要求的地址走快速路径，边界采用安全的标量处理。向量化不减少矩阵本身的数据量，也不自动保证所有访问都合并。
+
+共享内存的行尾增加 8 个 FP16 Padding：A 的行跨度从 32 改为 40，B 从 128 改为 136。改变行跨度可以改变 Bank 映射，但是否减少冲突取决于具体 Warp 访问模式，需要 Nsight Compute 验证。当前实现是 Padding，不是 Swizzle；不能将二者混写为已完成的功能。
+
+### 3.5 cp.async 双缓冲：等待的位置比指令名称更重要
+
+V6 用两份共享内存缓冲区交替存放 K Tile。完成首块预取后，稳态循环按以下顺序推进：
+
+```text
+发起下一块拷贝到另一缓冲区 → commit_group
+计算当前块：ldmatrix + mma.sync
+wait_group 0 → Block 同步 → 交换缓冲区
+```
+
+`cp.async` 允许 Global-to-Shared 搬运与当前块计算重叠，并避免普通拷贝的数据中转寄存器。当前实现最多保留一个待完成的拷贝组，因此计算后使用 `wait_group 0` 确保下一块可读；这不等于在计算前等待，也不必然破坏重叠。直接改为 `wait_group 1` 可能让所需数据仍未就绪。
+
+异步等待负责拷贝完成，Block 同步负责线程间协作及缓冲区复用，不能只用 `__syncthreads()` 代替异步等待。理想稳态时间可从“搬运时间 + 计算时间”接近二者的较大值，但实际还存在启动、排空、同步及双缓冲资源开销。紧凑 Tile 与异步流水同时改变时，整体收益不能全部归因于 `cp.async`。[Ampere 调优指南](https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html)
+
+### 3.6 非规则边界与真实 LLM Shape
+
+矩阵维度不必等于 Tile 的整数倍：越界输入按零填充，输出只写合法行列；所有参与线程仍需执行必要的同步。V6 的向量化快速路径还要求 N/K 为 8 的倍数及指针满足 16-byte 对齐，不满足时回退到 V5，而不是强行使用异步路径。
+
+LLM Linear 对应 `M=batch_tokens`、`K=in_features`、`N=out_features`。Prefill 将多个 Token 合并，通常有更大的 M；Decode 的 M 接近当前 Batch 大小。M=1 时，较大的输出 Tile 可能执行大量无效行计算，权重读取与启动开销也更突出。因此，在 2048 方阵上接近 cuBLASLt，并不意味着在投影层、FFN 或 Decode Shape 上都能达到同样比例。
+
+V7 按准确的 M/N/K 记录离线调优结果，而不是假定某个 Kernel 普遍最优。`best_custom` 用于观察自定义实现的上限；`best_available` 只有在稳定性和收益门槛都满足时才选择自定义后端，否则使用 cuBLASLt。Kernel 误差验收、模型 Logits 验收和性能验收是独立条件：单算子通过不代表模型级误差一定通过，回退后的模型通过也不代表自定义路径通过。
+
+## 4. 版本演进
 
 | 版本 | 后端 | 主要内容 |
 |---|---|---|
@@ -69,7 +140,7 @@ Epilogue:        none
 
 V6 同时提供同步双缓冲消融版本。紧凑 Tile 会改变资源使用和数据复用，因此不能将紧凑异步版本相对其他 Tile 的全部收益归因于 `cp.async`。
 
-## 4. 环境与编译
+## 5. 环境与编译
 
 ### 已使用的实验环境
 
@@ -133,7 +204,7 @@ python setup.py build_ext --inplace --force
 
 CUTLASS 是可选参考实现，不是运行自定义 Kernel 的必要依赖。其 Shape 和对齐限制由 `can_implement()` 检查；当前参考封装在每次调用时执行初始化，不应将其计时解释为仅包含底层 Kernel 的最优 CUTLASS 性能。
 
-## 5. Python 使用方式
+## 6. Python 使用方式
 
 ```python
 import torch
@@ -175,7 +246,7 @@ c = hgemm(a, b, implementation="shape_auto")
 
 调度表绑定 GPU、CUDA/PyTorch 版本和代码/Extension 指纹。修改相关代码或重新编译后，应重新测量并生成调度表，不要手动替换指纹复用旧成绩。
 
-## 6. 测试与基准协议
+## 7. 测试与基准协议
 
 ### 正确性测试
 
@@ -259,7 +330,7 @@ Performance ratio =
 
 实验生成的 CSV、JSON 和 profiling 文件默认被 `.gitignore` 忽略；上述文件名用于定位实验产物，不意味着原始结果已随仓库发布。
 
-## 7. V7：真实 LLM Shape 与分派
+## 8. V7：真实 LLM Shape 与分派
 
 ### Shape 采集
 
@@ -408,7 +479,7 @@ python benchmarks/report_v7.py \
 
 验证文件不得复用调优 CSV。按当前已记录的模型级数值失败情况，报告工具会拒绝生成合格的自定义模型吞吐结论，这是预期的保护行为。
 
-## 8. Nsight Compute
+## 9. Nsight Compute
 
 仓库提供单 Shape profiling 入口：
 
@@ -440,7 +511,7 @@ ncu \
 - 本 README 不报告尚未取得的 Tensor Pipe、occupancy 或 stall 指标。
 - Tensor Pipe 活跃周期比例不等于实测 TFLOPS 占理论峰值的比例。
 
-## 9. 项目结构
+## 10. 项目结构
 
 ```text
 LLM-TensorCore-HGEMM/
@@ -490,7 +561,7 @@ LLM-TensorCore-HGEMM/
 
 实验协议、优化日志、映射说明及数值限制位于 [docs](docs)。
 
-## 10. 贡献与许可证
+## 11. 贡献与许可证
 
 欢迎通过 Issue 或 Pull Request 提交问题、正确性案例及优化建议。性能相关提交请同时说明 GPU、软件环境、Shape、数值契约、测试协议和原始结果；不要仅提供单个 TFLOPS 数字。
 

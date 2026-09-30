@@ -1,0 +1,144 @@
+{
+  "shapes": [
+    {
+      "m": 2,
+      "n": 2560,
+      "k": 4096,
+      "phase": "decode",
+      "module": "model.layers.0.self_attn.o_proj"
+    },
+    {
+      "m": 2,
+      "n": 2560,
+      "k": 9728,
+      "phase": "decode",
+      "module": "model.layers.0.mlp.down_proj"
+    },
+    {
+      "m": 2,
+      "n": 4096,
+      "k": 2560,
+      "phase": "decode",
+      "module": "model.layers.0.self_attn.q_proj"
+    },
+    {
+      "m": 2,
+      "n": 9728,
+      "k": 2560,
+      "phase": "decode",
+      "module": "model.layers.0.mlp.gate_proj"
+    },
+    {
+      "m": 8,
+      "n": 2560,
+      "k": 4096,
+      "phase": "decode",
+      "module": "model.layers.0.self_attn.o_proj"
+    },
+    {
+      "m": 8,
+      "n": 2560,
+      "k": 9728,
+      "phase": "decode",
+      "module": "model.layers.0.mlp.down_proj"
+    },
+    {
+      "m": 8,
+      "n": 4096,
+      "k": 2560,
+      "phase": "decode",
+      "module": "model.layers.0.self_attn.q_proj"
+    },
+    {
+      "m": 8,
+      "n": 9728,
+      "k": 2560,
+      "phase": "decode",
+      "module": "model.layers.0.mlp.gate_proj"
+    },
+    {
+      "m": 16,
+      "n": 2560,
+      "k": 4096,
+      "phase": "decode",
+      "module": "model.layers.0.self_attn.o_proj"
+    },
+    {
+      "m": 16,
+      "n": 2560,
+      "k": 9728,
+      "phase": "decode",
+      "module": "model.layers.0.mlp.down_proj"
+    },
+    {
+      "m": 16,
+      "n": 4096,
+      "k": 2560,
+      "phase": "decode",
+      "module": "model.layers.0.self_attn.q_proj"
+    },
+    {
+      "m": 16,
+      "n": 9728,
+      "k": 2560,
+      "phase": "decode",
+      "module": "model.layers.0.mlp.gate_proj"
+    },
+    {
+      "m": 64,
+      "n": 2560,
+      "k": 4096,
+      "phase": "prefill",
+      "module": "model.layers.0.self_attn.o_proj"
+    },
+    {
+      "m": 64,
+      "n": 2560,
+      "k": 9728,
+      "phase": "prefill",
+      "module": "model.layers.0.mlp.down_proj"
+    },
+    {
+      "m": 64,
+      "n": 4096,
+      "k": 2560,
+      "phase": "prefill",
+      "module": "model.layers.0.self_attn.q_proj"
+    },
+    {
+      "m": 64,
+      "n": 9728,
+      "k": 2560,
+      "phase": "prefill",
+      "module": "model.layers.0.mlp.gate_proj"
+    },
+    {
+      "m": 256,
+      "n": 2560,
+      "k": 4096,
+      "phase": "prefill",
+      "module": "model.layers.0.self_attn.o_proj"
+    },
+    {
+      "m": 256,
+      "n": 2560,
+      "k": 9728,
+      "phase": "prefill",
+      "module": "model.layers.0.mlp.down_proj"
+    },
+    {
+      "m": 256,
+      "n": 4096,
+      "k": 2560,
+      "phase": "prefill",
+      "module": "model.layers.0.self_attn.q_proj"
+    },
+    {
+      "m": 256,
+      "n": 9728,
+      "k": 2560,
+      "phase": "prefill",
+      "module": "model.layers.0.mlp.gate_proj"
+    }
+  ]
+}

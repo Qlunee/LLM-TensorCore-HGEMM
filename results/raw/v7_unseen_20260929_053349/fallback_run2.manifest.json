@@ -1,0 +1,35 @@
+{
+  "environment": {
+    "timestamp": "2026-09-29T05:36:14.855335+00:00",
+    "hostname": "cloud6",
+    "python": "3.11.16",
+    "torch": "2.11.0+cu128",
+    "torch_cuda": "12.8",
+    "cuda_runtime": 12080,
+    "gpu": "NVIDIA GeForce RTX 3090",
+    "sm": "8.6",
+    "nvidia_smi": "NVIDIA GeForce RTX 3090, 595.84, 735, 5001, 350.00, 34, 0",
+    "nvcc": "unavailable",
+    "git_sha": "be796bb000f3c924ba08fbacdddd08ca42edb200",
+    "compile_arch": "sm_86",
+    "contract": {
+      "input_dtype": "fp16",
+      "accumulation_dtype": "fp32",
+      "output_dtype": "fp16",
+      "layout": "row-major/row-major",
+      "alpha": 1.0,
+      "beta": 0.0,
+      "allow_tf32": false
+    },
+    "code_fingerprint": "48ab080fd58e22d97cff3a3720cb8e1583bf547f005b6c4d8ef77e29542907bd",
+    "seed": 2028,
+    "shapes_sha256": "e222c2001c640b23d79e4cb27b984d8bd13e78c522a759e9ef19cb9414618d14",
+    "dispatch_strategy": "best_available",
+    "dispatch_sha256": "f0bcbc1506ab4bcf3887e29679572506292b0eb824b8e19e72a147f541b7cc12"
+  },
+  "benchmark": {
+    "warmup": 20,
+    "samples": 50,
+    "launches_per_sample": 10
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "model": "/home/lq/vllm-1p1d-v029/model/Qwen3-4B",
+  "load_dtype": "float16",
+  "local_files_only": true,
+  "model_commit": null,
+  "workload": "controlled random token inputs, actual model forward",
+  "batches": [
+    1,
+    2,
+    8,
+    16
+  ],
+  "lengths": [
+    64,
+    256
+  ],
+  "modules": [
+    "q_proj",
+    "o_proj",
+    "gate_proj",
+    "down_proj"
+  ],
+  "torch": "2.11.0+cu128",
+  "cuda": "12.8",
+  "code_fingerprint": "48ab080fd58e22d97cff3a3720cb8e1583bf547f005b6c4d8ef77e29542907bd"
+}

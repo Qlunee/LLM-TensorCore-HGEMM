@@ -2,6 +2,21 @@
 
 [English](README.md) | 简体中文
 
+## 性能亮点
+
+实验平台：**NVIDIA RTX 3090（SM86）**；FP16 输入、FP32 累加、FP16 输出。
+
+| 优化亮点 | 实测结果 | 测试条件 |
+|---|---|---|
+| 大方阵向量化 MMA | **62.0 TFLOPS** | M=N=K=4096 |
+| 紧凑异步 MMA | **58.5 TFLOPS**，三轮达到同期 **cuBLASLt 的 96.4%～99.7%** | M=N=K=2048 |
+| 紧凑 Tile 与异步流水联合优化 | 相对单缓冲向量化 Kernel，吞吐提升 **48.8%** | M=N=K=2048，按三轮延迟中位数计算 |
+| 同 Tile 异步搬运消融 | Tensor Pipe elapsed 活跃度 **29.5% → 40.4%**，相对提升 **36.8%** | M=N=K=2048，同为 64×64 CTA Tile、双缓冲 |
+
+吞吐使用 CUDA Events 测量；Tensor Pipe 活跃度来自 Nsight Compute 的三次采样中位数。详见[基准结果与测量协议](#7-测试与基准协议)和[NCU 实测](#9-nsight-compute)。
+
+## 项目简介
+
 面向 LLM Linear 层典型 Shape 的 Ampere Tensor Core HGEMM 优化项目。
 
 项目以 NVIDIA RTX 3090（SM86）为实验平台，逐步实现 CUDA Core、WMMA 和 MMA PTX 矩阵乘 Kernel，探索共享内存分块、向量化拷贝、Padding、异步双缓冲及 Shape-aware 分派，并通过 PyTorch CUDA Extension 对接真实 Qwen3 Linear 层。
@@ -30,7 +45,7 @@
 - FP32 输出、训练反向传播或可训练 Linear 替换。
 - Bias、SiLU、SwiGLU 等融合 epilogue。
 - CuTe Kernel、Attention Kernel 或多 GPU GEMM。
-- 已验证的端到端模型加速或完整 NCU 利用率结论。
+- 已验证的端到端模型加速。
 
 ## 2. 计算契约
 
@@ -508,8 +523,20 @@ ncu \
 - 需要管理员授予 GPU Performance Counters 访问权限。
 - 遇到 `ERR_NVGPUCTRPERM` 时，不能据此获得利用率结论。
 - 比较优化前后 Kernel 时，应保持 GPU、Shape、输入和采集条件一致。
-- 本 README 不报告尚未取得的 Tensor Pipe、occupancy 或 stall 指标。
 - Tensor Pipe 活跃周期比例不等于实测 TFLOPS 占理论峰值的比例。
+
+### 同 Tile 同步/异步双缓冲实测
+
+RTX 3090，M=N=K=2048；两组均使用 64×64 CTA Tile、128 线程/Block 和 19 KiB 静态共享内存/Block。下表取各组三次预热后目标 Kernel 采样的中位数，比较普通同步搬运与 `cp.async` 搬运。
+
+| 后端 | Tensor Pipe 活跃度（elapsed） |
+|---|---:|
+| `mma_double_buffer_compact` | 29.52% |
+| `mma_async_compact` | 40.39% |
+
+相对提升为 **36.84%**，绝对增加 **10.87 个百分点**。指标全名为 `sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed`。该同 Tile 对照与上文相对单缓冲版本的 **48.8%** 吞吐提升是两组不同实验；后者包含 Tile 调整与异步流水的联合收益。
+
+原始报告位于 `profiling/ncu/async_ablation_20260929_160534/` 中的 `sync_compact_2048.csv` 和 `async_compact_2048.csv`；profiling 产物默认不随 Git 仓库发布。
 
 ## 10. 项目结构
 

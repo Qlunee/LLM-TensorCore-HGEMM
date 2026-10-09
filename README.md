@@ -2,6 +2,21 @@
 
 English | [简体中文](README_zh.md)
 
+## Performance Highlights
+
+Measured on an **NVIDIA RTX 3090 (SM86)** with FP16 inputs, FP32 accumulation, and FP16 output.
+
+| Optimization | Measured result | Workload |
+|---|---|---|
+| Vectorized MMA for large square matrices | **62.0 TFLOPS** | M=N=K=4096 |
+| Compact asynchronous MMA | **58.5 TFLOPS**; **96.4%–99.7% of cuBLASLt throughput** across three matched runs | M=N=K=2048 |
+| Compact tiling combined with asynchronous pipelining | **48.8% higher throughput** than the single-buffer vectorized kernel | M=N=K=2048; calculated from the three-run median latencies |
+| Asynchronous-copy ablation with the same tile size | Tensor Pipe elapsed activity: **29.5% → 40.4%**, a **36.8% relative increase** | M=N=K=2048; both use 64×64 CTA tiles and double buffering |
+
+Throughput is measured with CUDA Events. Tensor Pipe activity is the median of three Nsight Compute kernel samples. See [benchmark results and methodology](#7-testing-and-benchmark-methodology) and [NCU measurements](#9-nsight-compute).
+
+## Overview
+
 Ampere Tensor Core HGEMM kernels for representative LLM linear-layer shapes.
 
 This project develops CUDA Core, WMMA, and MMA PTX implementations on an NVIDIA RTX 3090 (SM86). It explores shared-memory tiling, vectorized copies, padding, asynchronous double buffering, and shape-aware dispatch, with a PyTorch CUDA Extension for experiments on actual Qwen3 linear layers.
@@ -30,7 +45,7 @@ Not currently implemented:
 - FP32 output, backward kernels, or trainable Linear replacement.
 - Fused bias, SiLU, or SwiGLU epilogues.
 - CuTe kernels, attention kernels, or multi-GPU GEMM.
-- A validated end-to-end model speedup or complete NCU utilization results.
+- A validated end-to-end model speedup.
 
 ## 2. Numerical Contract
 
@@ -508,8 +523,20 @@ ncu \
 - GPU performance-counter access must be enabled by the administrator.
 - `ERR_NVGPUCTRPERM` means utilization measurements were not obtained.
 - Compare kernels under matched GPU, shape, input, and profiling conditions.
-- This README does not report unmeasured Tensor Pipe, occupancy, or stall metrics.
 - Tensor Pipe active-cycle percentage is not the same as achieved TFLOPS divided by theoretical peak TFLOPS.
+
+### Synchronous vs. asynchronous double buffering with the same tile size
+
+On the RTX 3090 at M=N=K=2048, both variants use 64×64 CTA tiles, 128 threads per block, and 19 KiB of static shared memory per block. The following medians are calculated from three target-kernel samples after warm-up, comparing ordinary synchronous copies with `cp.async`.
+
+| Backend | Tensor Pipe activity (elapsed) |
+|---|---:|
+| `mma_double_buffer_compact` | 29.52% |
+| `mma_async_compact` | 40.39% |
+
+This is a **36.84% relative increase**, or **10.87 percentage points**. The exact metric is `sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_elapsed`. This controlled comparison is separate from the **48.8%** throughput gain over the single-buffer kernel, which combines tile changes with asynchronous pipelining.
+
+The source reports are `sync_compact_2048.csv` and `async_compact_2048.csv` under `profiling/ncu/async_ablation_20260929_160534/`. Profiling artifacts are not distributed with the Git repository by default.
 
 ## 10. Repository Layout
 
